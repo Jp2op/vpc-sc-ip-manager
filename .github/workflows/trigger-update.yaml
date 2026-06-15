@@ -2,9 +2,10 @@ name: Trigger VPC SC Update
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - 'access_config.json'
+      - access_config.json
 
 env:
   CLOUD_RUN_URL: ${{ vars.CLOUD_RUN_URL }}
@@ -14,33 +15,47 @@ env:
 jobs:
   trigger-update:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: google-github-actions/auth@v2
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
           service_account: ${{ env.SERVICE_ACCOUNT }}
 
-      - name: Get ID token and trigger Cloud Run
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify Authentication
         run: |
-          TOKEN=$(gcloud auth print-identity-token --audiences=${{ env.CLOUD_RUN_URL }})
+          gcloud auth list
+          gcloud config list
+
+      - name: Get Access Token and Trigger Cloud Run
+        run: |
+          ACCESS_TOKEN=$(gcloud auth print-access-token)
+
           CONFIG=$(cat access_config.json)
 
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
             "${{ env.CLOUD_RUN_URL }}/update" \
-            -H "Authorization: Bearer $TOKEN" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{\"config\": $CONFIG}")
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
           BODY=$(echo "$RESPONSE" | sed '$d')
 
-          echo "Response ($HTTP_CODE): $BODY"
+          echo "Response ($HTTP_CODE):"
+          echo "$BODY"
 
           if [ "$HTTP_CODE" != "200" ]; then
             echo "ERROR: Cloud Run returned $HTTP_CODE"
