@@ -1,7 +1,7 @@
 import os
 import json
 from flask import Flask, request, jsonify
-from google.cloud import access_context_manager_v1
+from google.cloud import accesscontextmanager_v1
 from google.protobuf import field_mask_pb2
 
 app = Flask(__name__)
@@ -25,18 +25,18 @@ def get_all_ips(config):
 
 
 def update_access_level(cel_expression):
-    client = access_context_manager_v1.AccessContextManagerClient()
+    client = accesscontextmanager_v1.AccessContextManagerClient()
     path = f"accessPolicies/{POLICY_ID}/accessLevels/{ACCESS_LEVEL_NAME}"
 
-    access_level = access_context_manager_v1.AccessLevel(
+    access_level = accesscontextmanager_v1.AccessLevel(
         name=path,
-        custom=access_context_manager_v1.CustomLevel(
+        custom=accesscontextmanager_v1.CustomLevel(
             expr={"expression": cel_expression}
         ),
     )
 
     operation = client.update_access_level(
-        access_context_manager_v1.UpdateAccessLevelRequest(
+        accesscontextmanager_v1.UpdateAccessLevelRequest(
             access_level=access_level,
             update_mask=field_mask_pb2.FieldMask(paths=["custom.expr"]),
         )
