@@ -1,5 +1,5 @@
 {
-  "allowed_ips": {,
+  "allowed_ips": {
     "8.8.8.8": "Test IP - Google DNS"
   },
   "admin_ips": {}
