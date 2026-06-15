@@ -1,8 +1,6 @@
 import os
-import json
+import requests
 from flask import Flask, request, jsonify
-from google.cloud import accesscontextmanager_v1
-from google.protobuf import field_mask_pb2
 
 app = Flask(__name__)
 
@@ -17,51 +15,96 @@ def build_cel(ips):
 
 def get_all_ips(config):
     ips = set()
+
     for ip in config.get("allowed_ips", {}).keys():
         ips.add(ip)
+
     for ip in config.get("admin_ips", {}).keys():
         ips.add(ip)
+
     return sorted(ips)
 
 
+def get_access_token():
+    metadata_url = (
+        "http://metadata.google.internal/computeMetadata/v1/"
+        "instance/service-accounts/default/token"
+    )
+
+    response = requests.get(
+        metadata_url,
+        headers={"Metadata-Flavor": "Google"},
+        timeout=30,
+    )
+
+    response.raise_for_status()
+    return response.json()["access_token"]
+
+
 def update_access_level(cel_expression):
-    client = accesscontextmanager_v1.AccessContextManagerClient()
-    path = f"accessPolicies/{POLICY_ID}/accessLevels/{ACCESS_LEVEL_NAME}"
+    access_token = get_access_token()
 
-    access_level = accesscontextmanager_v1.AccessLevel(
-        name=path,
-        custom=accesscontextmanager_v1.CustomLevel(
-            expr={"expression": cel_expression}
-        ),
+    access_level_name = (
+        f"accessPolicies/{POLICY_ID}/accessLevels/{ACCESS_LEVEL_NAME}"
     )
 
-    operation = client.update_access_level(
-        accesscontextmanager_v1.UpdateAccessLevelRequest(
-            access_level=access_level,
-            update_mask=field_mask_pb2.FieldMask(paths=["custom.expr"]),
-        )
+    url = (
+        f"https://accesscontextmanager.googleapis.com/v1/"
+        f"{access_level_name}"
+        f"?updateMask=custom.expr"
     )
-    result = operation.result(timeout=300)
-    return result.name
+
+    payload = {
+        "name": access_level_name,
+        "title": ACCESS_LEVEL_NAME,
+        "custom": {
+            "expr": {
+                "expression": cel_expression
+            }
+        }
+    }
+
+    response = requests.patch(
+        url,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=120,
+    )
+
+    response.raise_for_status()
+
+    return response.json()
 
 
 @app.route("/update", methods=["POST"])
 def handle_update():
     data = request.get_json(silent=True)
+
     if not data or "config" not in data:
         return jsonify({"error": "Missing config"}), 400
 
     all_ips = get_all_ips(data["config"])
+
     if not all_ips:
         return jsonify({"error": "Empty IP list, refusing"}), 400
 
     cel = build_cel(all_ips)
+
     print(f"Updating with {len(all_ips)} IPs: {all_ips}")
     print(f"CEL: {cel}")
 
     try:
         result = update_access_level(cel)
-        return jsonify({"status": "success", "ips": all_ips, "access_level": result})
+
+        return jsonify({
+            "status": "success",
+            "ips": all_ips,
+            "result": result
+        })
+
     except Exception as e:
         print(f"ERROR: {e}")
         return jsonify({"error": str(e)}), 500
