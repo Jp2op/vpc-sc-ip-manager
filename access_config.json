@@ -1,6 +1,7 @@
 {
   "allowed_ips": {
-    "223.185.41.151": "Jp - Testing"
+    "223.185.41.151": "Jp - Testing" ,
+    "8.8.8.8": "Test IP - Google DNS"
   },
   "admin_ips": {}
 }
