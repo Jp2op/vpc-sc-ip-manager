@@ -1,0 +1,6 @@
+{
+  "allowed_ips": {
+    "YOUR.CURRENT.IP": "223.185.41.151"
+  },
+  "admin_ips": {}
+}
