@@ -7,9 +7,10 @@ on:
       - 'access_config.json'
 
 env:
-  CLOUD_RUN_URL: "https://vpc-sc-updater-xxxxx-uc.a.run.app"  # YOUR URL FROM STEP 4
-  WIF_PROVIDER: "projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
-  SERVICE_ACCOUNT: "github-trigger@PROJECT_ID.iam.gserviceaccount.com"
+env:
+  CLOUD_RUN_URL: ${{ vars.CLOUD_RUN_URL }}
+  WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
+  SERVICE_ACCOUNT: ${{ vars.SERVICE_ACCOUNT }}
 
 jobs:
   trigger-update:
