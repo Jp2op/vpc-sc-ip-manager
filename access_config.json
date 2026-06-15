@@ -1,6 +1,7 @@
 {
   "allowed_ips": {
-    "2.2.2.2": "Google DNS Test"
+    "2.2.2.2": "Google DNS Test",
+    "1.2.3.4": "Temp User"
   },
   "admin_ips": {
     "223.185.41.151": "Admin"
