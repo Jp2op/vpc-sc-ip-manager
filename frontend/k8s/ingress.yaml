@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ip-manager-ingress
+  namespace: ip-manager
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ipmgr.jp2op-project.site
+      http:
+        paths:
+          # API
+          - path: /llm-blocker
+            pathType: Prefix
+            backend:
+              service:
+                name: ip-manager
+                port:
+                  number: 80
+          # Frontend
+          - path: /llm-block/frontend
+            pathType: Prefix
+            backend:
+              service:
+                name: ip-manager-frontend
+                port:
+                  number: 80

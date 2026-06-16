@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ip-manager-frontend
+  namespace: ip-manager
+  labels:
+    app: ip-manager-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ip-manager-frontend
+  template:
+    metadata:
+      labels:
+        app: ip-manager-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: gcr.io/PROJECT_ID/ip-manager-frontend:v1
+          ports:
+            - containerPort: 8080
+          env:
+            # Runtime — where the frontend is served (must match VITE_BASE_PATH at build time)
+            - name: FRONTEND_BASE_PATH
+              value: "/llm-block/frontend/"
+          livenessProbe:
+            httpGet:
+              path: /llm-block/frontend/
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ip-manager-frontend
+  namespace: ip-manager
+spec:
+  type: ClusterIP
+  selector:
+    app: ip-manager-frontend
+  ports:
+    - port: 80
+      targetPort: 8080
