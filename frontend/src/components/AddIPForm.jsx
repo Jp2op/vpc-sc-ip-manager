@@ -6,7 +6,7 @@ const DURATION_OPTIONS = [
   { label: '1 hour', value: 60 },
   { label: '4 hours', value: 240 },
   { label: '24 hours', value: 1440 },
-  { label: 'Permanent', value: 0 },
+  { label: 'Custom', value: -1 },
 ];
 
 export default function AddIPForm({ onSubmit, loading }) {
@@ -14,15 +14,43 @@ export default function AddIPForm({ onSubmit, loading }) {
   const [name, setName] = useState('');
   const [reason, setReason] = useState('');
   const [duration, setDuration] = useState(60);
+  const [customMinutes, setCustomMinutes] = useState('');
+  const [isCustom, setIsCustom] = useState(false);
+
+  const handleDurationChange = (val) => {
+    const v = Number(val);
+    if (v === -1) {
+      setIsCustom(true);
+      setDuration(-1);
+    } else {
+      setIsCustom(false);
+      setDuration(v);
+      setCustomMinutes('');
+    }
+  };
+
+  const getEffectiveDuration = () => {
+    if (isCustom) {
+      const mins = parseInt(customMinutes, 10);
+      return isNaN(mins) || mins <= 0 ? null : mins;
+    }
+    return duration;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await onSubmit(ip, name, reason, duration);
+    const mins = getEffectiveDuration();
+    if (mins === null) return;
+    await onSubmit(ip, name, reason, mins);
     setIp('');
     setName('');
     setReason('');
     setDuration(60);
+    setCustomMinutes('');
+    setIsCustom(false);
   };
+
+  const isValid = ip && name && reason && getEffectiveDuration() !== null;
 
   return (
     <form onSubmit={handleSubmit} className="bg-gray-900 border border-gray-800 rounded-xl p-6">
@@ -75,8 +103,8 @@ export default function AddIPForm({ onSubmit, loading }) {
         <div>
           <label className="block text-sm text-gray-400 mb-1">Duration</label>
           <select
-            value={duration}
-            onChange={(e) => setDuration(Number(e.target.value))}
+            value={isCustom ? -1 : duration}
+            onChange={(e) => handleDurationChange(e.target.value)}
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm
                        focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
           >
@@ -86,10 +114,27 @@ export default function AddIPForm({ onSubmit, loading }) {
           </select>
         </div>
 
-        <div className="flex items-end">
+        {isCustom && (
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Minutes</label>
+            <input
+              type="number"
+              value={customMinutes}
+              onChange={(e) => setCustomMinutes(e.target.value)}
+              placeholder="Enter minutes"
+              min="1"
+              required
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm
+                         focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500
+                         placeholder-gray-500"
+            />
+          </div>
+        )}
+
+        <div className={`flex items-end ${isCustom ? 'md:col-span-2' : ''}`}>
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !isValid}
             className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50
                        disabled:cursor-not-allowed text-white font-medium rounded-lg
                        px-4 py-2 text-sm transition-colors"
