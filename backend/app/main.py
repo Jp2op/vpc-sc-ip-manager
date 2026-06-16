@@ -26,6 +26,10 @@ def create_storage() -> BaseStorage:
         from app.storage.firestore import FirestoreStorage
         logger.info(f"Storage: Firestore (project={s.gcp_project_id})")
         return FirestoreStorage(project_id=s.gcp_project_id, collection=s.firestore_collection)
+    elif s.storage_backend == "mongodb":
+        from app.storage.mongodb import MongoDBStorage
+        logger.info(f"Storage: MongoDB ({s.mongo_db})")
+        return MongoDBStorage(uri=s.mongo_uri, db_name=s.mongo_db)
     logger.info("Storage: in-memory (data resets on restart)")
     return MemoryStorage()
 
@@ -48,7 +52,7 @@ async def lifespan(app: FastAPI):
 
     # Startup recovery — reload missed expiries from storage
     # Only runs with persistent storage (Firestore), skipped for in-memory
-    if s.storage_backend != "memory":
+    if s.storage_backend in ("firestore", "mongodb"):
         logger.info("Running startup recovery...")
         await service.recover_on_startup()
 

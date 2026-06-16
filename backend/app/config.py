@@ -12,12 +12,16 @@ class Settings(BaseSettings):
     # Auth — API key for securing endpoints
     api_key: str = ""  # Set via IPMGR_API_KEY env var. Empty = auth disabled (dev only)
 
-    # Storage: "memory" or "firestore"
+    # Storage: "memory", "firestore", or "mongodb"
     storage_backend: str = "firestore"
 
-    # Firestore
+    # Firestore (native)
     gcp_project_id: str = ""
     firestore_collection: str = "ip_whitelist"
+
+    # MongoDB / Firestore MongoDB-compatible
+    mongo_uri: str = ""                           # SCRAM connection string
+    mongo_db: str = "ip_manager"                  # Database name
 
     # GitHub
     github_token: str = ""
