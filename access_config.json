@@ -1,6 +1,5 @@
 {
   "allowed_ips": {
-    "5.5.5.5": "Jp",
     "2.2.2.2": "Persistence Test"
   },
   "admin_ips": {
