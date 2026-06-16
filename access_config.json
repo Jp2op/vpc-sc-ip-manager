@@ -1,6 +1,5 @@
 {
   "allowed_ips": {
-    "7.7.7.7": "Expiry Test",
     "2.2.2.2": "Persistence Test"
   },
   "admin_ips": {
