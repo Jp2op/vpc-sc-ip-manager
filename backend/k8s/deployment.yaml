@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ip-manager
+  namespace: default
+  labels:
+    app: ip-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ip-manager
+  template:
+    metadata:
+      labels:
+        app: ip-manager
+    spec:
+      serviceAccountName: ip-manager-sa
+      containers:
+        - name: ip-manager
+          image: gcr.io/PROJECT_ID/ip-manager:latest  # Replace PROJECT_ID
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: IPMGR_STORAGE_BACKEND
+              value: "firestore"
+            - name: IPMGR_GCP_PROJECT_ID
+              value: "PROJECT_ID"              # Replace
+            - name: IPMGR_GITHUB_REPO
+              value: "Jp2op/vpc-sc-ip-manager"
+            - name: IPMGR_GITHUB_CONFIG_PATH
+              value: "access_config.json"
+            - name: IPMGR_GITHUB_BRANCH
+              value: "main"
+            - name: IPMGR_CORS_ORIGINS
+              value: "*"
+            - name: IPMGR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ip-manager-secrets
+                  key: api-key
+            - name: IPMGR_GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ip-manager-secrets
+                  key: github-token
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
