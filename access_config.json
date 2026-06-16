@@ -1,7 +1,5 @@
 {
-  "allowed_ips": {
-    "1.1.1.1": "Test IP"
-  },
+  "allowed_ips": {},
   "admin_ips": {
     "223.185.41.151": "Admin"
   }
