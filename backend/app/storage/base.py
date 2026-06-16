@@ -27,3 +27,11 @@ class BaseStorage(ABC):
 
     @abstractmethod
     async def list_audits(self, limit: int = 100) -> list[AuditEntry]: ...
+
+    async def try_lock(self, lock_id: str, ttl_seconds: int = 60) -> bool:
+        """Try to acquire a distributed lock. Returns True if acquired."""
+        return True  # Default: no-op (always succeeds for in-memory)
+
+    async def release_lock(self, lock_id: str) -> None:
+        """Release a distributed lock."""
+        pass  # Default: no-op

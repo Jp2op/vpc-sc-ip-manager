@@ -1,7 +1,10 @@
+import logging
 from google.cloud import firestore
 from app.storage.base import BaseStorage
 from app.models.schemas import IPEntry, AuditEntry, IPStatus
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+logger = logging.getLogger(__name__)
 
 
 class FirestoreStorage(BaseStorage):
@@ -17,6 +20,10 @@ class FirestoreStorage(BaseStorage):
     @property
     def _audits_ref(self):
         return self._db.collection(self._col).document("data").collection("audits")
+
+    @property
+    def _locks_ref(self):
+        return self._db.collection(self._col).document("data").collection("locks")
 
     async def add_ip(self, entry: IPEntry) -> None:
         data = entry.model_dump()
@@ -75,6 +82,45 @@ class FirestoreStorage(BaseStorage):
             data["timestamp"] = datetime.fromisoformat(data["timestamp"])
             entries.append(AuditEntry(**data))
         return entries
+
+    async def try_lock(self, lock_id: str, ttl_seconds: int = 60) -> bool:
+        """Acquire a distributed lock using Firestore.
+        
+        Creates a lock document with an expiry timestamp. If the lock
+        already exists and hasn't expired, returns False.
+        Stale locks (past TTL) are automatically overwritten.
+        """
+        ref = self._locks_ref.document(lock_id)
+        now = datetime.now(timezone.utc)
+
+        try:
+            doc = await ref.get()
+            if doc.exists:
+                lock_data = doc.to_dict()
+                expires = datetime.fromisoformat(lock_data.get("expires", ""))
+                if expires > now:
+                    # Lock is held and not expired
+                    return False
+                # Lock is stale, overwrite it
+
+            await ref.set({
+                "acquired_at": now.isoformat(),
+                "expires": (now + timedelta(seconds=ttl_seconds)).isoformat(),
+            })
+            logger.debug(f"Lock acquired: {lock_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Lock error for {lock_id}: {e}")
+            return False
+
+    async def release_lock(self, lock_id: str) -> None:
+        """Release a distributed lock."""
+        try:
+            await self._locks_ref.document(lock_id).delete()
+            logger.debug(f"Lock released: {lock_id}")
+        except Exception as e:
+            logger.error(f"Lock release error for {lock_id}: {e}")
 
     @staticmethod
     def _to_entry(data: dict) -> IPEntry:

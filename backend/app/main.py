@@ -37,6 +37,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Storage: {s.storage_backend}")
     logger.info(f"GitHub: {'configured' if s.github_token else 'MOCK mode'}")
     logger.info(f"Auth: {'API key required' if s.api_key else 'DISABLED (dev mode)'}")
+    logger.info(f"Debounce: 30s commit window")
 
     storage = create_storage()
     github = GitHubService()
@@ -44,6 +45,13 @@ async def lifespan(app: FastAPI):
     init_service(service)
 
     start_scheduler()
+
+    # Startup recovery — reload missed expiries from storage
+    # Only runs with persistent storage (Firestore), skipped for in-memory
+    if s.storage_backend != "memory":
+        logger.info("Running startup recovery...")
+        await service.recover_on_startup()
+
     logger.info("Ready")
 
     yield
@@ -75,11 +83,9 @@ app.include_router(ips_router, prefix=get_settings().api_prefix)
 
 @app.get("/health")
 async def health():
-    """Liveness probe — is the app running."""
     return {"status": "ok"}
 
 
 @app.get("/readiness")
 async def readiness():
-    """Readiness probe — is the app ready to serve traffic."""
     return {"status": "ready", "service": get_settings().app_name}
