@@ -77,7 +77,7 @@ class GitHubService:
             self._debounce_task.cancel()
         self._commit_messages.clear()
 
-        await self._do_commit(active_ips, message)
+        return await self._do_commit(active_ips, message)
 
     async def _do_commit(self, active_ips: list[IPEntry], message: str):
         config = self._build_config(active_ips)
