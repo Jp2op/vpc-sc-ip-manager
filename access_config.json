@@ -1,5 +1,7 @@
 {
-  "allowed_ips": {},
+  "allowed_ips": {
+    "2.2.2.2": "Persistence Test"
+  },
   "admin_ips": {
     "223.185.41.151": "Admin"
   }
