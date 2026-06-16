@@ -26,6 +26,7 @@ Thumbs.db
 # Secrets
 *.json
 !access_config.json
+!frontend/package.json
 
 # Temp
 *.yaml.bak
