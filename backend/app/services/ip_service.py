@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from app.models.schemas import (
-    IPEntry, IPStatus, AuditEntry, AuditAction,
+    IPEntry, IPStatus, PipelineStatus, AuditEntry, AuditAction,
     AddIPRequest, IPListResponse, AuditLogResponse,
 )
 from app.storage.base import BaseStorage
@@ -35,6 +35,7 @@ class IPService:
             reason=request.reason,
             duration_minutes=request.duration_minutes,
             status=IPStatus.ACTIVE,
+            pipeline_status=PipelineStatus.PENDING,
             created_at=now,
             expires_at=expires_at,
         )
@@ -53,14 +54,21 @@ class IPService:
         if expires_at:
             schedule_ip_expiry(request.ip, expires_at, self._on_expire)
 
-        # Immediate commit — user expects instant access
+        # Immediate commit
         active = await self.storage.get_active_ips()
-        await self.github.force_commit(
+        success = await self.github.force_commit(
             active, f"Add IP {request.ip} ({request.name}): {request.reason}"
         )
 
+        if success:
+            await self.storage.update_pipeline_status(request.ip, PipelineStatus.COMMITTED)
+        else:
+            await self.storage.update_pipeline_status(request.ip, PipelineStatus.COMMIT_FAILED)
+
         logger.info(f"Added {request.ip} by {request.name}, expires: {expires_at or 'never'}")
-        return entry
+
+        # Re-fetch to return updated pipeline_status
+        return await self.storage.get_ip(request.ip)
 
     async def remove_ip(self, ip: str, reason: str = "Manual removal") -> bool:
         existing = await self.storage.get_ip(ip)
@@ -71,6 +79,7 @@ class IPService:
 
         cancel_ip_expiry(ip)
         await self.storage.update_ip_status(ip, IPStatus.REMOVED)
+        await self.storage.update_pipeline_status(ip, PipelineStatus.PENDING)
 
         await self.storage.add_audit(AuditEntry(
             ip=ip,
@@ -81,9 +90,14 @@ class IPService:
             performed_by="manual",
         ))
 
-        # Immediate commit — user expects instant revocation
+        # Immediate commit
         active = await self.storage.get_active_ips()
-        await self.github.force_commit(active, f"Remove IP {ip}: {reason}")
+        success = await self.github.force_commit(active, f"Remove IP {ip}: {reason}")
+
+        if success:
+            await self.storage.update_pipeline_status(ip, PipelineStatus.COMMITTED)
+        else:
+            await self.storage.update_pipeline_status(ip, PipelineStatus.COMMIT_FAILED)
 
         logger.info(f"Removed {ip}: {reason}")
         return True
@@ -102,10 +116,10 @@ class IPService:
         try:
             existing = await self.storage.get_ip(ip)
             if not existing or existing.status != IPStatus.ACTIVE:
-                logger.warning(f"Expiry for {ip}: status changed while acquiring lock, skipping")
                 return False
 
             await self.storage.update_ip_status(ip, IPStatus.EXPIRED)
+            await self.storage.update_pipeline_status(ip, PipelineStatus.PENDING)
 
             await self.storage.add_audit(AuditEntry(
                 ip=ip,
@@ -116,7 +130,7 @@ class IPService:
                 performed_by="scheduler",
             ))
 
-            # Debounced — batches multiple simultaneous expiries into one commit
+            # Debounced — batches simultaneous expiries
             await self.github.request_commit(
                 f"Auto-expire IP {ip} (duration: {existing.duration_minutes}min)"
             )
@@ -127,6 +141,22 @@ class IPService:
         finally:
             await self.storage.release_lock(f"expire_{ip}")
 
+    async def handle_pipeline_callback(self, status: str, error: str | None = None) -> int:
+        """Called by GitHub Actions after pipeline finishes.
+        Updates all 'committed' IPs to 'applied' or 'failed'."""
+        if status == "applied":
+            count = await self.storage.bulk_update_pipeline_status(
+                PipelineStatus.COMMITTED, PipelineStatus.APPLIED
+            )
+            logger.info(f"Pipeline callback: {count} IPs marked as applied")
+            return count
+        else:
+            count = await self.storage.bulk_update_pipeline_status(
+                PipelineStatus.COMMITTED, PipelineStatus.FAILED
+            )
+            logger.error(f"Pipeline callback: {count} IPs marked as failed — {error}")
+            return count
+
     async def recover_on_startup(self):
         active_ips = await self.storage.get_active_ips()
         now = datetime.now(timezone.utc)
@@ -136,9 +166,8 @@ class IPService:
         for entry in active_ips:
             if entry.expires_at is None:
                 continue
-
             if entry.expires_at <= now:
-                logger.info(f"Startup recovery: expiring missed IP {entry.ip} (was due {entry.expires_at})")
+                logger.info(f"Startup recovery: expiring missed IP {entry.ip}")
                 await self.expire_ip(entry.ip)
                 expired_count += 1
             else:
@@ -147,12 +176,10 @@ class IPService:
 
         if expired_count or rescheduled_count:
             logger.info(f"Startup recovery: expired {expired_count}, rescheduled {rescheduled_count}")
-
             if expired_count > 0:
                 active_ips = await self.storage.get_active_ips()
                 await self.github.force_commit(
-                    active_ips,
-                    f"Startup recovery: expired {expired_count} missed IP(s)"
+                    active_ips, f"Startup recovery: expired {expired_count} missed IP(s)"
                 )
         else:
             logger.info("Startup recovery: nothing to recover")

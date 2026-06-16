@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from app.models.schemas import (
-    AddIPRequest, RemoveIPRequest, IPEntry, IPListResponse,
-    AuditLogResponse, MessageResponse, IPStatus,
+    AddIPRequest, RemoveIPRequest, PipelineCallbackRequest,
+    IPEntry, IPListResponse, AuditLogResponse, MessageResponse, IPStatus,
 )
 from app.services.ip_service import IPService
 from app.services.scheduler import list_scheduled_jobs
@@ -50,7 +50,7 @@ async def list_ips(status: IPStatus | None = Query(None)):
 
 @router.get("/ips/{ip}", response_model=IPEntry)
 async def get_ip(ip: str):
-    """Get details of a specific IP."""
+    """Get details of a specific IP including pipeline status."""
     entry = await _svc().get_ip(ip)
     if not entry:
         raise HTTPException(status_code=404, detail=f"IP {ip} not found")
@@ -61,6 +61,16 @@ async def get_ip(ip: str):
 async def get_audit_log(limit: int = Query(100, ge=1, le=1000)):
     """Audit log of all IP changes."""
     return await _svc().get_audit_log(limit)
+
+
+@router.post("/pipeline/callback")
+async def pipeline_callback(body: PipelineCallbackRequest):
+    """Called by GitHub Actions after pipeline finishes.
+    Updates all committed IPs to applied or failed."""
+    if body.status not in ("applied", "failed"):
+        raise HTTPException(status_code=400, detail="status must be 'applied' or 'failed'")
+    count = await _svc().handle_pipeline_callback(body.status, body.error)
+    return {"message": f"{count} IP(s) updated to {body.status}", "count": count}
 
 
 @router.get("/debug/jobs")

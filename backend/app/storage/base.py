@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from app.models.schemas import IPEntry, AuditEntry, IPStatus
+from app.models.schemas import IPEntry, AuditEntry, IPStatus, PipelineStatus
 
 
 class BaseStorage(ABC):
@@ -28,10 +28,18 @@ class BaseStorage(ABC):
     @abstractmethod
     async def list_audits(self, limit: int = 100) -> list[AuditEntry]: ...
 
+    async def update_pipeline_status(self, ip: str, status: PipelineStatus) -> bool:
+        """Update the pipeline status of a single IP."""
+        return False
+
+    async def bulk_update_pipeline_status(
+        self, from_status: PipelineStatus, to_status: PipelineStatus
+    ) -> int:
+        """Update all IPs with from_status to to_status. Returns count updated."""
+        return 0
+
     async def try_lock(self, lock_id: str, ttl_seconds: int = 60) -> bool:
-        """Try to acquire a distributed lock. Returns True if acquired."""
-        return True  # Default: no-op (always succeeds for in-memory)
+        return True
 
     async def release_lock(self, lock_id: str) -> None:
-        """Release a distributed lock."""
-        pass  # Default: no-op
+        pass

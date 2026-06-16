@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.storage.base import BaseStorage
-from app.models.schemas import IPEntry, AuditEntry, IPStatus
+from app.models.schemas import IPEntry, AuditEntry, IPStatus, PipelineStatus
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class MongoDBStorage(BaseStorage):
 
     async def add_ip(self, entry: IPEntry) -> None:
         data = entry.model_dump()
-        data["_id"] = entry.ip  # Use IP as document ID
+        data["_id"] = entry.ip
         data["created_at"] = data["created_at"].isoformat()
         if data["expires_at"]:
             data["expires_at"] = data["expires_at"].isoformat()
@@ -65,47 +65,47 @@ class MongoDBStorage(BaseStorage):
             entries.append(AuditEntry(**doc))
         return entries
 
+    async def update_pipeline_status(self, ip: str, status: PipelineStatus) -> bool:
+        result = await self._ips.update_one(
+            {"_id": ip}, {"$set": {"pipeline_status": status.value}}
+        )
+        return result.matched_count > 0
+
+    async def bulk_update_pipeline_status(
+        self, from_status: PipelineStatus, to_status: PipelineStatus
+    ) -> int:
+        result = await self._ips.update_many(
+            {"pipeline_status": from_status.value},
+            {"$set": {"pipeline_status": to_status.value}}
+        )
+        return result.modified_count
+
     async def try_lock(self, lock_id: str, ttl_seconds: int = 60) -> bool:
         now = datetime.now(timezone.utc)
         expires = now + timedelta(seconds=ttl_seconds)
-
         try:
-            # Try to insert a new lock, or overwrite if expired
             result = await self._locks.update_one(
                 {
                     "_id": lock_id,
                     "$or": [
-                        {"expires": {"$lte": now.isoformat()}},  # Expired lock
-                        {"expires": {"$exists": False}},          # No lock
+                        {"expires": {"$lte": now.isoformat()}},
+                        {"expires": {"$exists": False}},
                     ]
                 },
-                {
-                    "$set": {
-                        "acquired_at": now.isoformat(),
-                        "expires": expires.isoformat(),
-                    }
-                },
+                {"$set": {"acquired_at": now.isoformat(), "expires": expires.isoformat()}},
                 upsert=False,
             )
-
             if result.matched_count > 0:
-                logger.debug(f"Lock acquired (update): {lock_id}")
                 return True
-
-            # Lock doesn't exist yet — try to insert
             try:
                 await self._locks.insert_one({
                     "_id": lock_id,
                     "acquired_at": now.isoformat(),
                     "expires": expires.isoformat(),
                 })
-                logger.debug(f"Lock acquired (insert): {lock_id}")
                 return True
             except Exception:
-                # Duplicate key — someone else got it
-                logger.debug(f"Lock contention: {lock_id}")
                 return False
-
         except Exception as e:
             logger.error(f"Lock error for {lock_id}: {e}")
             return False
@@ -113,7 +113,6 @@ class MongoDBStorage(BaseStorage):
     async def release_lock(self, lock_id: str) -> None:
         try:
             await self._locks.delete_one({"_id": lock_id})
-            logger.debug(f"Lock released: {lock_id}")
         except Exception as e:
             logger.error(f"Lock release error for {lock_id}: {e}")
 
@@ -124,4 +123,7 @@ class MongoDBStorage(BaseStorage):
             doc["created_at"] = datetime.fromisoformat(doc["created_at"])
         if isinstance(doc.get("expires_at"), str):
             doc["expires_at"] = datetime.fromisoformat(doc["expires_at"])
+        # Backcompat: old docs won't have pipeline_status
+        if "pipeline_status" not in doc:
+            doc["pipeline_status"] = "applied"
         return IPEntry(**doc)

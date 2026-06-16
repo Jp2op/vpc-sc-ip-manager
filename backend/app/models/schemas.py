@@ -10,6 +10,14 @@ class IPStatus(str, Enum):
     REMOVED = "removed"
 
 
+class PipelineStatus(str, Enum):
+    PENDING = "pending"            # Saved to DB, not yet committed
+    COMMITTED = "committed"        # Committed to GitHub, pipeline running
+    COMMIT_FAILED = "commit_failed"  # GitHub commit failed
+    APPLIED = "applied"            # VPC SC updated successfully
+    FAILED = "failed"              # Pipeline failed
+
+
 class AuditAction(str, Enum):
     ADDED = "added"
     REMOVED = "removed"
@@ -42,6 +50,11 @@ class RemoveIPRequest(BaseModel):
     reason: str = Field(default="Manual removal", max_length=500)
 
 
+class PipelineCallbackRequest(BaseModel):
+    status: str = Field(..., description="applied or failed")
+    error: str | None = Field(default=None, description="Error message if failed")
+
+
 # ---- Responses ----
 
 class IPEntry(BaseModel):
@@ -50,6 +63,7 @@ class IPEntry(BaseModel):
     reason: str
     duration_minutes: int
     status: IPStatus
+    pipeline_status: PipelineStatus = PipelineStatus.PENDING
     created_at: datetime
     expires_at: datetime | None = None
 

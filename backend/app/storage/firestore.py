@@ -1,7 +1,7 @@
 import logging
 from google.cloud import firestore
 from app.storage.base import BaseStorage
-from app.models.schemas import IPEntry, AuditEntry, IPStatus
+from app.models.schemas import IPEntry, AuditEntry, IPStatus, PipelineStatus
 from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
@@ -83,42 +83,46 @@ class FirestoreStorage(BaseStorage):
             entries.append(AuditEntry(**data))
         return entries
 
+    async def update_pipeline_status(self, ip: str, status: PipelineStatus) -> bool:
+        ref = self._ips_ref.document(ip)
+        doc = await ref.get()
+        if not doc.exists:
+            return False
+        await ref.update({"pipeline_status": status.value})
+        return True
+
+    async def bulk_update_pipeline_status(
+        self, from_status: PipelineStatus, to_status: PipelineStatus
+    ) -> int:
+        count = 0
+        query = self._ips_ref.where("pipeline_status", "==", from_status.value)
+        async for doc in query.stream():
+            await doc.reference.update({"pipeline_status": to_status.value})
+            count += 1
+        return count
+
     async def try_lock(self, lock_id: str, ttl_seconds: int = 60) -> bool:
-        """Acquire a distributed lock using Firestore.
-        
-        Creates a lock document with an expiry timestamp. If the lock
-        already exists and hasn't expired, returns False.
-        Stale locks (past TTL) are automatically overwritten.
-        """
         ref = self._locks_ref.document(lock_id)
         now = datetime.now(timezone.utc)
-
         try:
             doc = await ref.get()
             if doc.exists:
                 lock_data = doc.to_dict()
                 expires = datetime.fromisoformat(lock_data.get("expires", ""))
                 if expires > now:
-                    # Lock is held and not expired
                     return False
-                # Lock is stale, overwrite it
-
             await ref.set({
                 "acquired_at": now.isoformat(),
                 "expires": (now + timedelta(seconds=ttl_seconds)).isoformat(),
             })
-            logger.debug(f"Lock acquired: {lock_id}")
             return True
-
         except Exception as e:
             logger.error(f"Lock error for {lock_id}: {e}")
             return False
 
     async def release_lock(self, lock_id: str) -> None:
-        """Release a distributed lock."""
         try:
             await self._locks_ref.document(lock_id).delete()
-            logger.debug(f"Lock released: {lock_id}")
         except Exception as e:
             logger.error(f"Lock release error for {lock_id}: {e}")
 
@@ -128,4 +132,6 @@ class FirestoreStorage(BaseStorage):
             data["created_at"] = datetime.fromisoformat(data["created_at"])
         if isinstance(data.get("expires_at"), str):
             data["expires_at"] = datetime.fromisoformat(data["expires_at"])
+        if "pipeline_status" not in data:
+            data["pipeline_status"] = "applied"
         return IPEntry(**data)
