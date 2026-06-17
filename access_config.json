@@ -1,5 +1,6 @@
 {
   "allowed_ips": {
+    "1.1.1.1": "ky pta",
     "2.2.2.2": "Persistence Test"
   },
   "admin_ips": {
