@@ -1,6 +1,5 @@
 {
   "allowed_ips": {
-    "3.3.3.3": "Jayant",
     "2.2.2.2": "Persistence Test"
   },
   "admin_ips": {
